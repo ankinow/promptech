@@ -19,6 +19,7 @@ ACTIONS = [
     ("🎙", "Ditado (heard)", "/home/lermf/bin/dictate-heard.sh"),
     ("🔍", "Prompt search", "espanso cmd search"),
     ("⌨", "Ditado local (whisper)", "/home/lermf/bin/dictate-whisper.sh"),
+    ("➕", "Adicionar/editar prompts", "bash -c 'xdg-open ~/.config/espanso/match/base.yml || espanso edit'"),
 ]
 
 
