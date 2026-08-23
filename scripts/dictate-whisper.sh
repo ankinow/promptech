@@ -3,7 +3,7 @@
 set -u
 STATE=/tmp/promptech-dictate.pid
 WAV=/tmp/promptech-voice.wav
-MODEL="${PROMPTECH_MODEL:-$HOME/.models/ggml-large-v3-turbo-q5.bin}"
+MODEL="${PROMPTECH_MODEL:-$HOME/.models/ggml-base-q5_1.bin}"
 WHISPER="$(command -v whisper-cli || echo whisper-cli)"
 
 paste() { # $1=texto
