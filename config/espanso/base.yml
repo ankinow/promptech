@@ -1,0 +1,25 @@
+matches:
+  - trigger: "ppresumo"
+    label: "Prompt: resumo executivo PT-BR"
+    replace: "Resuma o texto a seguir em um resumo executivo conciso em português, com bullet points e conclusão acionável:\n\n{{form1.form1}}"
+    vars:
+      - name: form1
+        type: form
+        params:
+          layout: "Cole o texto: [[form1]]"
+  - trigger: "ppreview"
+    label: "Prompt: code review"
+    replace: "Faça code review do código a seguir. Aponte bugs, riscos de segurança e melhorias de performance. Formato: lista priorizada (crítico/importante/nice).\n\n{{form2.form2}}"
+    vars:
+      - name: form2
+        type: form
+        params:
+          layout: "Cole o código: [[form2]]"
+  - trigger: "pptrad"
+    label: "Prompt: tradutor PT-BR<->EN"
+    replace: "Traduza preservando tom e termos técnicos. PT-BR <-> EN:\n\n{{form3.form3}}"
+    vars:
+      - name: form3
+        type: form
+        params:
+          layout: "Texto: [[form3]]"

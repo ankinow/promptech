@@ -1,0 +1,5 @@
+# Promptech — PT-BR config
+keyboard_layout:
+  layout: "br"
+search_shortcut: ALT+SHIFT+SPACE
+force_mode: clipboard
