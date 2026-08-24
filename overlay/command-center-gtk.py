@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """heard/promptech command center — GTK3 floating overlay (~10-30MB RAM vs 78 PyQt6)."""
 import os
-os.environ.setdefault("GDK_BACKEND", "wayland")  # obrigatório sob KWin Wayland — sem isso a janela não renderiza
+import os
 import subprocess
+
+os.environ.setdefault("GDK_BACKEND", "wayland")  # obrigatório sob KWin Wayland — sem isso a janela não renderiza
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, Gdk
+from gi.repository import Gtk, Gdk, GLib
 
 CSS = b"""
 .root { background: rgba(13,20,36,0.93); border-radius: 14px; border: 1px solid #2a3b5c; }
@@ -15,10 +17,12 @@ button { background: transparent; color: #dce7ff; border: 1px solid #33507f;
 button:hover { background: #1d3050; }
 """
 
+_HOME = os.path.expanduser("~")
+
 ACTIONS = [
-    ("🎙", "Ditado (heard)", "/home/lermf/bin/dictate-heard.sh"),
+    ("🎙", "Ditado (heard)", f"{_HOME}/bin/dictate-heard.sh"),
     ("🔍", "Prompt search", "espanso cmd search"),
-    ("⌨", "Ditado local (whisper)", "/home/lermf/bin/dictate-whisper.sh"),
+    ("⌨", "Ditado local (whisper)", f"{_HOME}/bin/dictate-whisper.sh"),
     ("➕", "Adicionar/editar prompts", "bash -c 'xdg-open ~/.config/espanso/match/base.yml || espanso edit'"),
 ]
 
