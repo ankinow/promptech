@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# promptech-logs — investigação unificada de logs do ecossistema promptech (LERMF)
+# Uso: promptech-logs [app|dictate|espanso|all|tail]
+set -u
+APP_LOG="$HOME/.local/state/promptech.log"
+DICTATE_ERR="/tmp/heard-err.log"
+N=${2:-30}
+
+section() { printf '\n\033[1;34m== %s ==\033[0m\n' "$1"; }
+
+case "${1:-all}" in
+  app)
+    section "promptech app log (últimas $N)"
+    tail -n "$N" "$APP_LOG" 2>/dev/null || echo "(vazio)"
+    ;;
+  dictate)
+    section "ditado — erro mais recente"
+    tail -n "$N" "$DICTATE_ERR" 2>/dev/null || echo "(sem erro)"
+    section "gravações em /tmp"
+    ls -la /tmp/promptech-voice.wav /tmp/heard-voice.wav 2>/dev/null || echo "(nenhuma)"
+    section "pids de gravação ativos"
+    cat /tmp/promptech-dictate.pid /tmp/heard-dictate.pid 2>/dev/null || echo "(nenhum)"
+    ;;
+  espanso)
+    section "espanso — status"
+    espanso status 2>&1 | head -5
+    section "espanso — log do usuário"
+    journalctl --user -u espanso -n "$N" --no-pager 2>/dev/null | tail -"$N" || espanso log 2>/dev/null | tail -"$N" || echo "(indisponível)"
+    ;;
+  tail)
+    tail -f "$APP_LOG" 2>/dev/null
+    ;;
+  all|*)
+    section "promptech app log (últimas $N)"
+    tail -n "$N" "$APP_LOG" 2>/dev/null || echo "(vazio)"
+    section "ditado — erro mais recente"
+    tail -n 5 "$DICTATE_ERR" 2>/dev/null || echo "(sem erro)"
+    section "espanso — status"
+    espanso status 2>&1 | head -5
+    section "health rápido"
+    for c in pw-record whisper-cli wl-copy ydotool wtype; do
+      command -v "$c" >/dev/null && echo "ok    $c" || echo "AUSENTE $c"
+    done
+    pgrep -x ydotoold >/dev/null && echo "ok    ydotoold (rodando)" || echo "AUSENTE ydotoold"
+    echo
+    echo "dica: promptech-logs tail (segue em tempo real) | promptech-logs espanso | promptech-logs dictate"
+    ;;
+esac
