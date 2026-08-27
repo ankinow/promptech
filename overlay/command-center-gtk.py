@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """heard/promptech command center — GTK3 floating overlay (~10-30MB RAM vs 78 PyQt6)."""
 import os
-import os
 import subprocess
 
 os.environ.setdefault("GDK_BACKEND", "wayland")  # obrigatório sob KWin Wayland — sem isso a janela não renderiza

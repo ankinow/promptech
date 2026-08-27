@@ -1,0 +1,4 @@
+promptech-overlay/
+
+__pycache__/
+*.pyc
