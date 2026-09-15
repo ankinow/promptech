@@ -1,8 +1,6 @@
 """promptech_cc.window — janela principal (busca + lista + ações + status)."""
 import os
-
 import subprocess
-
 import gi
 
 gi.require_version("Gdk", "3.0")
@@ -10,7 +8,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk  # noqa: F401  (GLib p/ typing futuro)
 
 from . import services
-from .dialogs import LogsDialog, NewPromptDialog
+from .dialogs import LogsDialog, NewPromptDialog, SettingsDialog
 from .panels import PromptRow, build_actions_panel, build_prompts_panel
 
 
@@ -23,17 +21,17 @@ class CommandCenter(Gtk.Window):
         self.set_keep_above(True)
         self.set_decorated(False)
         self.set_resizable(False)
-        self.set_default_size(520, 400)
+        self.set_default_size(960, 620)
         self.set_position(Gtk.WindowPosition.CENTER)
 
-        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8,
-                       margin_top=10, margin_bottom=8, margin_start=10, margin_end=10)
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10,
+                       margin_top=14, margin_bottom=12, margin_start=14, margin_end=14)
         root.get_style_context().add_class("root")
 
         self._build_header(root)
         self._build_search(root)
 
-        body = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        body = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
         root.pack_start(body, True, True, 0)
 
         self.listbox, left = build_prompts_panel()
@@ -53,7 +51,7 @@ class CommandCenter(Gtk.Window):
 
     # ---- construção ----
     def _build_header(self, root):
-        head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         title = Gtk.Label(xalign=0)
         title.get_style_context().add_class("title")
         title.set_markup(
@@ -85,7 +83,7 @@ class CommandCenter(Gtk.Window):
     def _build_search(self, root):
         self.search = Gtk.SearchEntry()
         self.search.set_name("search-entry")
-        self.search.set_placeholder_text("Buscar prompt… (digita p/ filtrar)")
+        self.search.set_placeholder_text("Buscar prompt… (digite trigger, label ou conteúdo)")
         self.search.connect("search-changed", self._filter)
         self.search.connect("activate", self._copy_first)
         root.pack_start(self.search, False, False, 0)
@@ -104,10 +102,17 @@ class CommandCenter(Gtk.Window):
         self.stat.set_text(f"{n} prompts · espanso: {services.espanso_status()} · uptime {up_s}")
 
     def _filter(self, _e):
-        q = self.search.get_text().lower()
+        q = self.search.get_text().lower().strip()
         for row in self.listbox.get_children():
+            if not q:
+                row.set_visible(True)
+                continue
             hay = (row.trigger + " " + row.label).lower()
-            row.set_visible(q in hay)
+            if q in hay:
+                row.set_visible(True)
+            else:
+                body = services.read_prompt_body(row.trigger).lower()
+                row.set_visible(q in body)
 
     def _visible_rows(self):
         return [r for r in self.listbox.get_children() if r.get_visible()]
@@ -134,9 +139,21 @@ class CommandCenter(Gtk.Window):
     def new_prompt_dialog(self):
         dlg = NewPromptDialog(self)
         resp = dlg.run()
-        dlg.destroy()
         if resp == Gtk.ResponseType.OK:
+            err = dlg.save()
+            if err:
+                services.notify("promptech", f"erro ao salvar: {err}")
+            else:
+                self.reload()
+        dlg.destroy()
+
+    def show_settings_dialog(self):
+        dlg = SettingsDialog(parent=self)
+        resp = dlg.run()
+        if resp == Gtk.ResponseType.OK:
+            dlg.save()
             self.reload()
+        dlg.destroy()
 
     def show_logs_dialog(self):
         dlg = LogsDialog(parent=self)
@@ -161,7 +178,6 @@ class CommandCenter(Gtk.Window):
             subprocess.Popen(["bash", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                              start_new_session=True)  # fire-and-forget intencional (toggle scripts)
         except OSError as e:
-            from . import services
             services.notify("promptech", f"ditado falhou: {e}")
 
     def dictate_heard(self, _btn=None):

@@ -1,12 +1,14 @@
-"""promptech_cc.services — camada de dados (parse, save, status, spawn).
+"""promptech_cc.services — camada de dados (parse, save, status, spawn, settings, backups).
 
 Sem Gtk aqui: funções puras testáveis. Base:
-- base.yml = ~/.config/espanso/match/base.yml (override teste: PROMPTECH_BASE_YML)
-- lock     = ~/.local/state/promptech.lock  (flock single-writer)
-- backups  = ~/.config/espanso/backup/      (rotativo, mantém 5)
+- base.yml  = ~/.config/espanso/match/base.yml (override teste: PROMPTECH_BASE_YML)
+- settings  = ~/.config/promptech/settings.json
+- lock      = ~/.local/state/promptech.lock    (flock single-writer)
+- backups   = ~/.config/espanso/backup/        (rotativo, mantém 5)
 """
 import datetime
 import fcntl
+import json
 import os
 import re
 import subprocess
@@ -17,6 +19,18 @@ BASE_YML = os.path.join(_HOME, ".config/espanso/match/base.yml")
 BACKUP_DIR = os.path.join(_HOME, ".config/espanso/backup")
 LOG_FILE = os.path.join(_HOME, ".local/state/promptech.log")
 LOCK_FILE = os.path.join(_HOME, ".local/state/promptech.lock")
+SETTINGS_FILE = os.path.join(_HOME, ".config/promptech/settings.json")
+
+DEFAULT_SETTINGS = {
+    "whisper_model": os.path.expanduser("~/.models/ggml-base-q5_1.bin"),
+    "whisper_lang": "pt",
+    "audio_rate": 16000,
+    "audio_channels": 1,
+    "auto_reload_espanso": True,
+    "ui_scale": "large",
+    "window_width": 960,
+    "window_height": 620,
+}
 
 _TRIGGER_RE = re.compile(r"[a-zA-Z0-9_-]+")
 
@@ -106,7 +120,6 @@ def read_prompt_body(trigger: str) -> str:
         if in_replace and line.startswith(" " * 6):  # corpo indentado sob replace: |
             out.append(stripped)
         elif stripped and not stripped.startswith(("label:", "vars:", "- name:", "type:", "params:", "layout:")) and out is not None:
-            # linha solta (replace inline antigo) — só se ainda sem corpo em replace
             if not in_replace:
                 out.append(stripped)
     return "\n".join(out) or trigger
@@ -155,7 +168,9 @@ def append_prompt(trigger: str, label: str, body: str) -> str:
             os.remove(old)
         except OSError:
             pass
-    restart_espanso()
+    cfg = load_settings()
+    if cfg.get("auto_reload_espanso", True):
+        restart_espanso()
     log(f"save trigger={trigger}")
     return ""
 
@@ -203,3 +218,128 @@ def tail_log(n: int = 30) -> str:
             return "\n".join(f.read().splitlines()[-n:]) or "(log vazio)"
     except OSError:
         return "(sem log ainda)"
+
+
+def load_settings() -> dict:
+    """Carrega configurações do arquivo SETTINGS_FILE com fallback para DEFAULT_SETTINGS."""
+    cfg = dict(DEFAULT_SETTINGS)
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    cfg.update(loaded)
+        except (OSError, json.JSONDecodeError) as e:
+            log(f"load_settings falhou: {e}")
+    return cfg
+
+
+def save_settings(data: dict) -> bool:
+    """Salva configurações atomicamente em SETTINGS_FILE com flock."""
+    try:
+        os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
+        with open(LOCK_FILE, "w") as lockf:
+            fcntl.flock(lockf.fileno(), fcntl.LOCK_EX)
+            try:
+                fd, tmp = tempfile.mkstemp(dir=os.path.dirname(SETTINGS_FILE), suffix=".json")
+                with os.fdopen(fd, "w", encoding="utf-8") as t:
+                    json.dump(data, t, indent=2, ensure_ascii=False)
+                    t.write("\n")
+                    t.flush()
+                    os.fsync(t.fileno())
+                os.replace(tmp, SETTINGS_FILE)
+            finally:
+                fcntl.flock(lockf.fileno(), fcntl.LOCK_UN)
+        log("settings salvos com sucesso")
+        return True
+    except (OSError, TypeError) as e:
+        log(f"save_settings falhou: {e}")
+        return False
+
+
+def list_available_models() -> list[str]:
+    """Escaneia diretórios padrão e configurações por modelos whisper (*.bin)."""
+    models = set()
+    dirs = [
+        os.path.expanduser("~/.models"),
+        "/usr/share/whisper",
+        os.path.expanduser("~/.local/share/whisper"),
+    ]
+    for d in dirs:
+        if os.path.isdir(d):
+            try:
+                for entry in os.listdir(d):
+                    if entry.endswith(".bin"):
+                        models.add(os.path.join(d, entry))
+            except OSError:
+                pass
+    settings = load_settings()
+    custom_model = settings.get("whisper_model")
+    if custom_model and os.path.isfile(custom_model):
+        models.add(custom_model)
+    return sorted(models)
+
+
+def list_backups() -> list[dict]:
+    """Retorna lista de backups existentes em BACKUP_DIR ordenados do mais recente para o mais antigo."""
+    res = []
+    if not os.path.isdir(BACKUP_DIR):
+        return res
+    try:
+        for f in os.listdir(BACKUP_DIR):
+            if f.endswith(".yml") or f.endswith(".yaml"):
+                p = os.path.join(BACKUP_DIR, f)
+                try:
+                    st = os.stat(p)
+                    mtime_dt = datetime.datetime.fromtimestamp(st.st_mtime, tz=datetime.timezone.utc)
+                    res.append({
+                        "filename": f,
+                        "path": p,
+                        "mtime": mtime_dt.strftime("%Y-%m-%d %H:%M:%S"),
+                        "size": st.st_size,
+                    })
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    res.sort(key=lambda x: x["mtime"], reverse=True)
+    return res
+
+
+def restore_backup(filepath: str) -> str | None:
+    """Restaura arquivo de backup (caminho completo ou nome de arquivo). Retorna None se ok ou msg de erro."""
+    if os.path.isabs(filepath) and os.path.isfile(filepath):
+        src = filepath
+    else:
+        src = os.path.join(BACKUP_DIR, filepath)
+    if not os.path.isfile(src):
+        return f"Arquivo de backup '{filepath}' não existe"
+    target = base_yml()
+    stamp = datetime.datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    try:
+        with open(LOCK_FILE, "w") as lockf:
+            fcntl.flock(lockf.fileno(), fcntl.LOCK_EX)
+            try:
+                if os.path.exists(target):
+                    content = open(target, encoding="utf-8").read()
+                    with open(os.path.join(BACKUP_DIR, f"base-pre-restore-{stamp}.yml"), "w", encoding="utf-8") as b:
+                        b.write(content)
+                new_content = open(src, encoding="utf-8").read()
+                fd, tmp = tempfile.mkstemp(dir=os.path.dirname(target), suffix=".yml")
+                with os.fdopen(fd, "w", encoding="utf-8") as t:
+                    t.write(new_content)
+                    t.flush()
+                    os.fsync(t.fileno())
+                os.replace(tmp, target)
+            finally:
+                fcntl.flock(lockf.fileno(), fcntl.LOCK_UN)
+        cfg = load_settings()
+        if cfg.get("auto_reload_espanso", True):
+            restart_espanso()
+        log(f"restore_backup success from={src}")
+        return None
+    except OSError as e:
+        log(f"restore_backup falhou: {e}")
+        return str(e)
