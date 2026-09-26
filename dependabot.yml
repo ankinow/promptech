@@ -1,0 +1,10 @@
+dependabot:
+  updates:
+    - package-ecosystem: "pip"
+      directory: "/"
+      schedule:
+        interval: "weekly"
+    - package-ecosystem: "npm_and_yarn"
+      directory: "/"
+      schedule:
+        interval: "weekly"
