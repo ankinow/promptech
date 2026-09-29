@@ -5,12 +5,23 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
-  lint-test:
+  syntax-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Check files
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile Python sources
+        run: python -m compileall -q overlay
+      - name: Check shell scripts
         run: |
-          echo "CI placeholder for promptech"
-          find . -type f -name "*.py" | head -n 20 || true
+          set -eu
+          for file in scripts/dictate-*.sh scripts/promptech-logs; do
+            bash -n "$file"
+          done
