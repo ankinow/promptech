@@ -1,10 +1,15 @@
 version: 2
 updates:
+  # ÚNICO ecossistema válido: este repo não é um projeto npm (não há
+  # package.json) nem pip (não há pyproject.toml/requirements.txt) — as
+  # dependências de runtime são pacotes de sistema via pacman/paru
+  # (whisper-cpp, wl-clipboard, ydotool, espanso), ver INSTALL.md.
+  #
+  # Histórico: existia aqui um package-ecosystem "npm" que fazia o updater
+  # abortar toda semana com `dependency_file_not_found: /package.json not
+  # found` (run 36851516068, 2026-10-01). Declarar um ecossistema sem o
+  # manifesto correspondente é o que produz esse erro — não a versão.
   - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-  - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
